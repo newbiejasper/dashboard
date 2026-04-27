@@ -25,6 +25,9 @@ export const datasourceAPI = {
     api.put<DataSource>(`/datasources/${id}`, data),
   delete: (id: number) => api.delete(`/datasources/${id}`),
   test: (id: number) => api.post(`/datasources/${id}/test`),
+  // Browse tables and columns from a connected datasource
+  tables: (id: number) => api.get<{ tables: { name: string; comment: string; engine: string; rows: number }[] }>(`/datasources/${id}/tables`),
+  columns: (id: number, table: string) => api.get<{ columns: { name: string; type: string; original_type: string; nullable: boolean; comment: string; key: string; max_length: number }[] }>(`/datasources/${id}/tables/${table}/columns`),
 }
 
 // ===== Datasets =====

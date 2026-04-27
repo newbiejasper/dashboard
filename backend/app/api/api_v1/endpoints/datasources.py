@@ -156,3 +156,129 @@ async def test_connection(
         raise HTTPException(status_code=404, detail="DataSource not found")
     # TODO: Actual connection test logic per source_type
     return {"status": "success", "message": f"Connection to {ds.name} successful"}
+
+
+@router.get("/{datasource_id}/tables")
+async def list_tables(
+    datasource_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取数据源下的所有表"""
+    result = await db.execute(
+        select(DataSource).where(
+            DataSource.id == datasource_id,
+            DataSource.owner_id == current_user.id,
+        )
+    )
+    ds = result.scalar_one_or_none()
+    if not ds:
+        raise HTTPException(status_code=404, detail="DataSource not found")
+
+    if ds.source_type == "mysql":
+        import aiomysql
+        conn = await aiomysql.connect(
+            host=ds.config.get("host", "localhost"),
+            port=ds.config.get("port", 3306),
+            user=ds.config.get("username", "root"),
+            password=ds.config.get("password", ""),
+            db=ds.config.get("database", ""),
+            connect_timeout=5,
+        )
+        try:
+            async with conn.cursor() as cur:
+                db_name = ds.config.get("database", "")
+                await cur.execute(
+                    "SELECT TABLE_NAME, TABLE_COMMENT, ENGINE, TABLE_ROWS "
+                    "FROM information_schema.TABLES "
+                    "WHERE TABLE_SCHEMA = %s AND TABLE_TYPE = 'BASE TABLE' "
+                    "ORDER BY TABLE_NAME",
+                    (db_name,),
+                )
+                rows = await cur.fetchall()
+                tables = []
+                for r in rows:
+                    tables.append({
+                        "name": r[0],
+                        "comment": r[1] or "",
+                        "engine": r[2] or "",
+                        "rows": r[3] or 0,
+                    })
+                return {"tables": tables}
+        finally:
+            conn.close()
+    else:
+        # Fallback: return tables from datasets that use this datasource
+        from app.models.datasource import Dataset as DatasetModel
+        q = select(DatasetModel.source_table).where(
+            DatasetModel.datasource_id == datasource_id,
+            DatasetModel.source_table.isnot(None),
+        ).distinct()
+        r = await db.execute(q)
+        tables = [{"name": row[0], "comment": "", "engine": "", "rows": 0} for row in r.fetchall()]
+        return {"tables": tables}
+
+
+@router.get("/{datasource_id}/tables/{table_name}/columns")
+async def list_table_columns(
+    datasource_id: int,
+    table_name: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取指定表的字段信息"""
+    result = await db.execute(
+        select(DataSource).where(
+            DataSource.id == datasource_id,
+            DataSource.owner_id == current_user.id,
+        )
+    )
+    ds = result.scalar_one_or_none()
+    if not ds:
+        raise HTTPException(status_code=404, detail="DataSource not found")
+
+    if ds.source_type == "mysql":
+        import aiomysql
+        conn = await aiomysql.connect(
+            host=ds.config.get("host", "localhost"),
+            port=ds.config.get("port", 3306),
+            user=ds.config.get("username", "root"),
+            password=ds.config.get("password", ""),
+            db=ds.config.get("database", ""),
+            connect_timeout=5,
+        )
+        try:
+            async with conn.cursor() as cur:
+                db_name = ds.config.get("database", "")
+                await cur.execute(
+                    "SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_COMMENT, "
+                    "       COLUMN_KEY, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH "
+                    "FROM information_schema.COLUMNS "
+                    "WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s "
+                    "ORDER BY ORDINAL_POSITION",
+                    (db_name, table_name),
+                )
+                rows = await cur.fetchall()
+                columns = []
+                for r in rows:
+                    col_name = r[0]
+                    col_type = r[1]
+                    data_type = r[5] or ""
+                    is_number = data_type in ("int", "bigint", "smallint", "tinyint",
+                                              "decimal", "float", "double", "numeric")
+                    is_date = data_type in ("date", "datetime", "timestamp", "time", "year")
+                    field_type = "number" if is_number else ("date" if is_date else "string")
+                    columns.append({
+                        "name": col_name,
+                        "type": field_type,
+                        "original_type": col_type,
+                        "nullable": r[2] == "YES",
+                        "comment": r[3] or "",
+                        "key": r[4] or "",
+                        "max_length": r[6],
+                    })
+                return {"columns": columns}
+        finally:
+            conn.close()
+    else:
+        raise HTTPException(status_code=400, detail=f"Table browsing not supported for {ds.source_type}")

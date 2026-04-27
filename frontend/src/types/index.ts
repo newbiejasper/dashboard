@@ -38,6 +38,10 @@ export interface Dataset {
   source_table?: string
   sql_query?: string
   fields_config?: FieldConfig[]
+  dimensions_config?: DimensionConfig[]
+  measures_config?: MeasureConfig[]
+  drill_down_config?: DrillDownConfig[]
+  filter_fields?: FilterFieldConfig[]
   transformations?: any
   sync_config?: any
   data_sample?: any[]
@@ -53,6 +57,39 @@ export interface FieldConfig {
   type: 'string' | 'number' | 'date' | 'boolean'
   alias?: string
   original_type?: string
+}
+
+export interface DimensionConfig {
+  name: string
+  type: string
+  alias?: string
+  sub_dimensions?: SubDimensionConfig[]
+}
+
+export interface SubDimensionConfig {
+  name: string
+  alias?: string
+}
+
+export interface MeasureConfig {
+  name: string
+  type: string
+  alias?: string
+  aggregation: 'SUM' | 'AVG' | 'COUNT' | 'MAX' | 'MIN' | 'COUNT_DISTINCT'
+}
+
+export interface DrillDownConfig {
+  name: string
+  alias?: string
+  levels: string[]
+}
+
+export interface FilterFieldConfig {
+  name: string
+  type: 'dropdown' | 'date_picker' | 'text_input' | 'slider' | 'date_range'
+  alias?: string
+  field: string
+  options?: any[]
 }
 
 export interface Chart {

@@ -35,7 +35,13 @@ class Dataset(Base):
     dataset_type = Column(String(30), nullable=False)  # table, sql, file, cross_source, api
     source_table = Column(String(200))  # original table name
     sql_query = Column(Text)  # custom SQL
-    fields_config = Column(JSON)  # field definitions, type mappings
+    fields_config = Column(JSON)  # raw field definitions from source table
+    # === New structured dataset configuration ===
+    dimensions_config = Column(JSON)  # [{"name": "province", "type": "string", "alias": "省份", "sub_dimensions": [...]}, ...]
+    measures_config = Column(JSON)    # [{"name": "sales", "type": "number", "alias": "销售额", "aggregation": "SUM"}, ...]
+    drill_down_config = Column(JSON)  # [{"name": "geo_drill", "levels": ["country", "province", "city"]}, ...]
+    filter_fields = Column(JSON)      # [{"name": "category", "type": "dropdown", "alias": "类别", "field": "category"}, ...]
+    # ====================================
     transformations = Column(JSON)  # transformation pipeline (filter, sort, aggregate, join)
     sync_config = Column(JSON)  # sync schedule config
     data_sample = Column(JSON)  # sample data preview

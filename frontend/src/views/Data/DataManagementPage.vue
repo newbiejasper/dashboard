@@ -66,6 +66,12 @@
       </el-tab-pane>
 
       <el-tab-pane label="数据集" name="datasets">
+        <div class="tab-toolbar">
+          <span></span>
+          <el-button type="primary" size="small" @click="showCreateDSDialog = true" :disabled="dataStore.datasources.length === 0">
+            <el-icon><Plus /></el-icon> 从数据源创建
+          </el-button>
+        </div>
         <div class="dataset-grid">
           <div class="dataset-card card" v-for="ds in dataStore.datasets" :key="ds.id">
             <div class="ds-header">
@@ -76,15 +82,29 @@
             <p>{{ ds.description || ds.source_table || '自定义数据集' }}</p>
             <div class="ds-fields">
               <el-tag
-                v-for="f in (ds.fields_config || []).slice(0, 5)"
+                v-for="f in (ds.fields_config || []).slice(0, 3)"
                 :key="f.name"
                 size="small"
                 :type="f.type === 'number' ? 'primary' : f.type === 'date' ? 'warning' : 'info'"
               >
                 {{ f.name }}
               </el-tag>
-              <el-tag v-if="(ds.fields_config?.length || 0) > 5" size="small">
-                +{{ (ds.fields_config?.length || 0) - 5 }}
+              <el-tag v-if="(ds.fields_config?.length || 0) > 3" size="small">
+                +{{ (ds.fields_config?.length || 0) - 3 }}
+              </el-tag>
+            </div>
+            <div v-if="ds.dimensions_config?.length || ds.measures_config?.length" class="ds-model-info">
+              <el-tag v-if="ds.dimensions_config?.length" size="small" type="success">
+                维度 {{ ds.dimensions_config.length }}
+              </el-tag>
+              <el-tag v-if="ds.measures_config?.length" size="small" type="primary">
+                指标 {{ ds.measures_config.length }}
+              </el-tag>
+              <el-tag v-if="ds.drill_down_config?.length" size="small" type="warning">
+                下钻 {{ ds.drill_down_config.length }}
+              </el-tag>
+              <el-tag v-if="ds.filter_fields?.length" size="small" type="info">
+                筛选 {{ ds.filter_fields.length }}
               </el-tag>
             </div>
             <div class="ds-footer">
@@ -180,7 +200,8 @@
         <el-button @click="showNewDSDialog = false">取消</el-button>
         <el-button type="primary" :loading="creatingDS" @click="createDatasource">创建</el-button>
       </template>
-    </el-dialog>
+    <!-- Dataset Create Dialog -->
+    <DatasetCreateDialog v-model="showCreateDSDialog" :datasources="dataStore.datasources" @created="onDatasetCreated" />
   </div>
 </template>
 
@@ -190,12 +211,14 @@ import { useDataStore } from '@/stores/data'
 import { datasourceAPI, datasetAPI } from '@/api/endpoints'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { DataSource, Dataset } from '@/types'
+import DatasetCreateDialog from './DatasetCreateDialog.vue'
 
 const dataStore = useDataStore()
 const activeTab = ref('datasources')
 const showUploadDialog = ref(false)
 const showPreviewDialog = ref(false)
 const showNewDSDialog = ref(false)
+const showCreateDSDialog = ref(false)
 const uploading = ref(false)
 const creatingDS = ref(false)
 const previewData = ref<any[]>([])
@@ -370,6 +393,11 @@ function deleteDataset(ds: Dataset) {
     dataStore.loadDatasets()
   }).catch(() => {})
 }
+
+function onDatasetCreated() {
+  dataStore.loadDatasets()
+  activeTab.value = 'datasets'
+}
 </script>
 
 <style scoped>
@@ -486,6 +514,12 @@ function deleteDataset(ds: Dataset) {
   margin-bottom: 4px;
 }
 
+.tab-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 16px;
+}
+
 .dataset-card > p {
   font-size: 12px;
   color: var(--text-secondary);
@@ -497,6 +531,13 @@ function deleteDataset(ds: Dataset) {
   flex-wrap: wrap;
   gap: 4px;
   margin-bottom: 12px;
+}
+
+.ds-model-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
 }
 
 .ds-footer {

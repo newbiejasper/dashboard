@@ -142,21 +142,29 @@
               <h4>维度</h4>
               <el-select v-model="selectedView.chart.dimensions" multiple class="config-select" @change="onConfigChange">
                 <el-option
-                  v-for="f in currentFields"
+                  v-for="f in datasetDimensions.length > 0 ? datasetDimensions : currentFields"
                   :key="f.name"
-                  :label="f.name"
+                  :label="f.alias || f.name"
                   :value="f.name"
-                />
+                >
+                  <span>{{ f.alias || f.name }}</span>
+                  <span v-if="f.sub_dimensions?.length" class="field-hint">
+                    <el-icon><ArrowRight /></el-icon> {{ f.sub_dimensions.map((s: any) => s.name).join(', ') }}
+                  </span>
+                </el-option>
               </el-select>
 
               <h4>指标</h4>
               <el-select v-model="selectedView.chart.measures" multiple class="config-select" @change="onConfigChange">
                 <el-option
-                  v-for="f in currentFields"
+                  v-for="f in datasetMeasures.length > 0 ? datasetMeasures : currentFields"
                   :key="f.name"
-                  :label="f.name"
+                  :label="f.alias || f.name"
                   :value="f.name"
-                />
+                >
+                  <span>{{ f.alias || f.name }}</span>
+                  <span class="field-hint">{{ f.aggregation }}</span>
+                </el-option>
               </el-select>
             </div>
             <el-empty v-else description="请选择一个视图" :image-size="60" />
@@ -291,6 +299,21 @@ const currentFields = computed(() => {
   if (!chart) return []
   const ds = datasets.value.find((d) => d.id === chart.dataset_id)
   return ds?.fields_config || []
+})
+
+// Use dataset's structured config for dimension/measure suggestions
+const datasetDimensions = computed(() => {
+  const chart = selectedView.value?.chart
+  if (!chart) return []
+  const ds = datasets.value.find((d) => d.id === chart.dataset_id)
+  return ds?.dimensions_config || []
+})
+
+const datasetMeasures = computed(() => {
+  const chart = selectedView.value?.chart
+  if (!chart) return []
+  const ds = datasets.value.find((d) => d.id === chart.dataset_id)
+  return ds?.measures_config || []
 })
 
 function getViewStyle(view: DashboardView) {
@@ -686,5 +709,18 @@ function copyText(text: string) {
   font-weight: 600;
   margin-bottom: 8px;
   color: var(--text-primary);
+}
+</style>
+
+<style>
+/* Global style for dashboard editor field hints */
+.field-hint {
+  font-size: 11px;
+  color: var(--text-light);
+  margin-left: 8px;
+}
+.field-hint .el-icon {
+  vertical-align: middle;
+  font-size: 12px;
 }
 </style>

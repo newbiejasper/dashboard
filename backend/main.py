@@ -21,11 +21,29 @@ async def lifespan(app: FastAPI):
     # Startup
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Auto-migrate: add new dataset columns if they don't exist
+        await conn.run_sync(_migrate_dataset_columns)
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
     os.makedirs(settings.TEMPLATE_DIR, exist_ok=True)
     yield
     # Shutdown
     await engine.dispose()
+
+
+def _migrate_dataset_columns(conn):
+    """Add new dataset columns for SQLite (ignores if already exist)"""
+    import sqlalchemy as sa
+    inspector = sa.inspect(conn)
+    columns = [c["name"] for c in inspector.get_columns("datasets")]
+    new_columns = {
+        "dimensions_config": "JSON",
+        "measures_config": "JSON",
+        "drill_down_config": "JSON",
+        "filter_fields": "JSON",
+    }
+    for col_name, col_type in new_columns.items():
+        if col_name not in columns:
+            conn.execute(sa.text(f"ALTER TABLE datasets ADD COLUMN {col_name} {col_type}"))
 
 
 app = FastAPI(

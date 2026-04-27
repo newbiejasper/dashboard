@@ -80,6 +80,10 @@ class DatasetCreate(BaseModel):
     source_table: Optional[str] = None
     sql_query: Optional[str] = None
     fields_config: Optional[list] = None
+    dimensions_config: Optional[list] = None  # [{"name","type","alias","sub_dimensions":[...]}, ...]
+    measures_config: Optional[list] = None    # [{"name","type","alias","aggregation"}, ...]
+    drill_down_config: Optional[list] = None  # [{"name","levels":["a","b","c"]}, ...]
+    filter_fields: Optional[list] = None      # [{"name","type","alias","field"}, ...]
     transformations: Optional[dict] = None
     sync_config: Optional[dict] = None
 
@@ -88,6 +92,10 @@ class DatasetUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     fields_config: Optional[list] = None
+    dimensions_config: Optional[list] = None
+    measures_config: Optional[list] = None
+    drill_down_config: Optional[list] = None
+    filter_fields: Optional[list] = None
     transformations: Optional[dict] = None
     sync_config: Optional[dict] = None
 
@@ -101,6 +109,10 @@ class DatasetResponse(BaseModel):
     source_table: Optional[str] = None
     sql_query: Optional[str] = None
     fields_config: Optional[Any] = None
+    dimensions_config: Optional[Any] = None
+    measures_config: Optional[Any] = None
+    drill_down_config: Optional[Any] = None
+    filter_fields: Optional[Any] = None
     transformations: Optional[Any] = None
     sync_config: Optional[Any] = None
     data_sample: Optional[Any] = None
