@@ -200,6 +200,7 @@
         <el-button @click="showNewDSDialog = false">取消</el-button>
         <el-button type="primary" :loading="creatingDS" @click="createDatasource">创建</el-button>
       </template>
+    </el-dialog>
     <!-- Dataset Create Dialog -->
     <DatasetCreateDialog v-model="showCreateDSDialog" :datasources="dataStore.datasources" @created="onDatasetCreated" />
   </div>

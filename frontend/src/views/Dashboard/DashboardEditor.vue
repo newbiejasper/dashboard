@@ -66,48 +66,72 @@
           :style="canvasStyle"
           ref="canvasRef"
         >
-          <!-- Views -->
-          <div
-            v-for="view in dashboardStore.views"
-            :key="view.id"
-            class="canvas-view"
-            :class="{ selected: selectedView?.id === view.id }"
-            :style="getViewStyle(view)"
-            @click="selectView(view)"
+          <grid-layout
+            :layout="gridLayout"
+            :col-num="12"
+            :row-height="150"
+            :margin="[10, 10]"
+            :is-draggable="true"
+            :is-resizable="true"
+            :vertical-compact="true"
+            :use-css-transforms="true"
+            @layout-updated="onLayoutUpdated"
           >
-            <div class="view-header">
-              <span class="view-title">{{ view.title || view.chart?.name || '图表' }}</span>
-              <div class="view-actions">
-                <el-button text size="small" @click.stop="editView(view)">
-                  <el-icon><Edit /></el-icon>
-                </el-button>
-                <el-button text size="small" type="danger" @click.stop="removeView(view)">
-                  <el-icon><Delete /></el-icon>
-                </el-button>
+            <!-- Chart Views -->
+            <grid-item
+              v-for="view in dashboardStore.views"
+              :key="'v-' + view.id"
+              :x="getGridItem(view).x"
+              :y="getGridItem(view).y"
+              :w="getGridItem(view).w"
+              :h="getGridItem(view).h"
+              :i="'v-' + view.id"
+              class="canvas-view"
+              :class="{ selected: selectedView?.id === view.id }"
+              @click="selectView(view)"
+            >
+              <div class="view-header">
+                <span class="view-title">{{ view.title || view.chart?.name || '图表' }}</span>
+                <div class="view-actions">
+                  <el-button text size="small" @click.stop="editView(view)">
+                    <el-icon><Edit /></el-icon>
+                  </el-button>
+                  <el-button text size="small" type="danger" @click.stop="removeView(view)">
+                    <el-icon><Delete /></el-icon>
+                  </el-button>
+                </div>
               </div>
-            </div>
-            <div class="view-content">
-              <ChartEngine
-                v-if="view.chart"
-                :chart="view.chart"
-                :data="chartData[view.chart_id || 0] || []"
-              />
-              <div v-else class="empty-chart">
-                <el-icon :size="32" color="#CBD5E1"><DataBoard /></el-icon>
-                <p>请选择图表类型</p>
+              <div class="view-content">
+                <ChartEngine
+                  v-if="view.chart"
+                  :chart="view.chart"
+                  :data="chartData[view.chart_id || 0] || []"
+                />
+                <div v-else class="empty-chart">
+                  <el-icon :size="32" color="#CBD5E1"><DataBoard /></el-icon>
+                  <p>请选择图表类型</p>
+                </div>
               </div>
-            </div>
-          </div>
+            </grid-item>
 
-          <!-- Filters -->
-          <div
-            v-for="(f, idx) in dashboardStore.filters"
-            :key="'f-'+idx"
-            class="canvas-filter"
-            :style="{ position: 'absolute', left: f.position?.x + 'px', top: f.position?.y + 'px', width: f.position?.w + 'px' }"
-          >
-            <component :is="getFilterComponent(f.filter_type)" v-bind="getFilterProps(f)" />
-          </div>
+            <!-- Filter Components -->
+            <grid-item
+              v-for="(f, idx) in dashboardStore.filters"
+              :key="'f-' + idx"
+              :x="getFilterGrid(f, idx).x"
+              :y="getFilterGrid(f, idx).y"
+              :w="getFilterGrid(f, idx).w"
+              :h="1"
+              :i="'f-' + idx"
+              :is-resizable="false"
+              class="canvas-filter"
+            >
+              <div class="filter-content">
+                <span class="filter-label">{{ f.title }}</span>
+                <component :is="getFilterComponent(f.filter_type)" v-bind="getFilterProps(f)" />
+              </div>
+            </grid-item>
+          </grid-layout>
 
           <!-- Empty state -->
           <el-empty
@@ -250,7 +274,32 @@ import { dashboardAPI, datasetAPI } from '@/api/endpoints'
 import { ElMessage } from 'element-plus'
 import ChartEngine from '@/components/charts/ChartEngine.vue'
 import ChartTypePanel from '@/components/charts/ChartTypePanel.vue'
+import VueGridLayout from 'vue3-grid-layout'
 import type { DashboardView, DashboardFilter, Dataset, ChartType, Chart } from '@/types'
+
+const { GridLayout, GridItem } = VueGridLayout
+
+// Pixel → Grid conversion (12 cols, 150px rowHeight, 10px margin)
+const COL_W = 160  // 1920/12 approx
+const ROW_H = 160  // rowHeight + margin[1]
+
+function pixelsToGrid(p: { x?: number; y?: number; w?: number; h?: number }) {
+  return {
+    x: Math.round((p.x || 0) / COL_W),
+    y: Math.round((p.y || 0) / ROW_H),
+    w: Math.max(2, Math.round((p.w || 400) / COL_W)),
+    h: Math.max(2, Math.round((p.h || 300) / ROW_H)),
+  }
+}
+
+function gridToPixels(g: { x: number; y: number; w: number; h: number }) {
+  return {
+    x: g.x * COL_W,
+    y: g.y * ROW_H,
+    w: g.w * COL_W,
+    h: g.h * ROW_H,
+  }
+}
 
 const route = useRoute()
 const router = useRouter()
@@ -269,6 +318,9 @@ const selectedView = ref<DashboardView | null>(null)
 const dashboardName = ref('')
 const datasets = ref<Dataset[]>([])
 const chartData = reactive<Record<number, any[]>>({})
+
+// Grid layout state
+const gridLayout = ref<{ i: string; x: number; y: number; w: number; h: number }[]>([])
 
 // Interactions
 const interactions = reactive({
@@ -316,20 +368,59 @@ const datasetMeasures = computed(() => {
   return ds?.measures_config || []
 })
 
-function getViewStyle(view: DashboardView) {
+// Convert view pixel position to grid layout item
+function getGridItem(view: DashboardView) {
   const pos = view.position || { x: 20, y: 20, w: 400, h: 300 }
-  return {
-    position: 'absolute' as const,
-    left: `${pos.x}px`,
-    top: `${pos.y}px`,
-    width: `${pos.w}px`,
-    height: `${pos.h}px`,
-    backgroundColor: view.style?.backgroundColor || 'white',
-    border: view.style?.borderStyle === 'none' ? 'none' : `1px solid var(--border)`,
-    borderRadius: '8px',
-    boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
-    overflow: 'hidden',
+  return pixelsToGrid(pos)
+}
+
+// Put filters in the grid too (2-col width, place them below views)
+function getFilterGrid(_filter: DashboardFilter, idx: number) {
+  return { x: 0, y: 999 + idx, w: 4, h: 1 }
+}
+
+function getViewStyle(_view: DashboardView) {
+  return {} // No longer used for positioning
+}
+
+function buildGridLayout() {
+  const items: { i: string; x: number; y: number; w: number; h: number }[] = []
+  for (const view of dashboardStore.views) {
+    const g = getGridItem(view)
+    items.push({ i: 'v-' + view.id, ...g })
   }
+  for (let idx = 0; idx < dashboardStore.filters.length; idx++) {
+    const g = getFilterGrid(dashboardStore.filters[idx], idx)
+    items.push({ i: 'f-' + idx, ...g, h: 1 })
+  }
+  // Preserve existing grid item positions whenever possible
+  if (gridLayout.value.length > 0) {
+    for (const item of items) {
+      const existing = gridLayout.value.find((e) => e.i === item.i)
+      if (existing) {
+        item.x = existing.x
+        item.y = existing.y
+        item.w = existing.w
+        item.h = existing.h
+      }
+    }
+  }
+  gridLayout.value = items
+}
+
+// Called when grid-layout changes (drag/resize)
+function onLayoutUpdated(newLayout: { i: string; x: number; y: number; w: number; h: number }[]) {
+  for (const item of newLayout) {
+    if (item.i.startsWith('v-')) {
+      const viewId = Number(item.i.slice(2))
+      const view = dashboardStore.views.find((v) => v.id === viewId)
+      if (view) {
+        const pixel = gridToPixels(item)
+        view.position = { x: pixel.x, y: pixel.y, w: pixel.w, h: pixel.h }
+      }
+    }
+  }
+  gridLayout.value = newLayout
 }
 
 onMounted(async () => {
@@ -348,6 +439,9 @@ onMounted(async () => {
     }
   }
 
+  // Build grid layout from views
+  buildGridLayout()
+
   // Load share info
   const dash = dashboardStore.currentDashboard
   if (dash) {
@@ -362,6 +456,14 @@ onMounted(async () => {
     interactions.drill_down_hierarchy = selectedView.value.interactions.drill_down_hierarchy || []
   }
 })
+
+// Rebuild grid when views or filters change
+watch(
+  () => [dashboardStore.views.length, dashboardStore.filters.length],
+  () => {
+    buildGridLayout()
+  }
+)
 
 async function loadChartData(view: DashboardView) {
   if (!view.chart_id) return
@@ -409,10 +511,32 @@ async function addNewChart(type: ChartType) {
   })
   const chart = chartRes.data
 
+  // Find an empty grid slot for the new chart
+  const usedCells = new Set<string>()
+  for (const v of dashboardStore.views) {
+    const g = getGridItem(v)
+    for (let dx = 0; dx < g.w; dx++) {
+      for (let dy = 0; dy < g.h; dy++) {
+        usedCells.add(`${g.x + dx},${g.y + dy}`)
+      }
+    }
+  }
+  let gridX = 0, gridY = 0
+  for (let y = 0; y < 100; y++) {
+    for (let x = 0; x <= 12 - 6; x++) {
+      let occupied = false
+      for (let dx = 0; dx < 6; dx++) {
+        if (usedCells.has(`${x + dx},${y}`)) { occupied = true; break }
+      }
+      if (!occupied) { gridX = x; gridY = y; y = 100; break }
+    }
+  }
+  const pixel = gridToPixels({ x: gridX, y: gridY, w: 6, h: 2 })
+
   const viewRes = await dashboardAPI.addView(dashId, {
     title: '',
     chart_id: chart.id,
-    position: { x: 20 + (dashboardStore.views.length % 3) * 20, y: 20 + Math.floor(dashboardStore.views.length / 3) * 20, w: 420, h: 320 },
+    position: { x: pixel.x, y: pixel.y, w: pixel.w, h: pixel.h },
     style: { backgroundColor: '#FFFFFF', borderStyle: 'solid' },
     interactions: {},
   })
@@ -609,10 +733,26 @@ function copyText(text: string) {
   background: white;
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  padding: 10px;
+}
+
+.canvas-area :deep(.vue-grid-item) {
+  transition: all 200ms ease;
+}
+
+.canvas-area :deep(.vue-resizable-handle) {
+  z-index: 10;
 }
 
 .canvas-view {
-  transition: box-shadow 0.2s;
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .canvas-view:hover {
@@ -621,7 +761,7 @@ function copyText(text: string) {
 
 .canvas-view.selected {
   outline: 2px solid var(--primary);
-  outline-offset: 2px;
+  outline-offset: -2px;
 }
 
 .view-header {
@@ -650,8 +790,8 @@ function copyText(text: string) {
 }
 
 .view-content {
-  width: 100%;
-  height: calc(100% - 32px);
+  flex: 1;
+  min-height: 0;
 }
 
 .empty-chart {
@@ -665,10 +805,27 @@ function copyText(text: string) {
 }
 
 .canvas-filter {
+  height: 100%;
   background: white;
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 8px;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+}
+
+.filter-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.filter-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  white-space: nowrap;
 }
 
 .config-tabs {
